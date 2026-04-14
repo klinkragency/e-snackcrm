@@ -15,6 +15,13 @@
       "when": 1776200968934,
       "tag": "0001_admin_plugin",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776201531373,
+      "tag": "0002_managed_containers",
+      "breakpoints": true
     }
   ]
 }

@@ -63,6 +63,9 @@ services:
         condition: service_completed_successfully
     ports:
       - "127.0.0.1:3000:3000"
+    volumes:
+      # Mounted read-write so the dashboard can manage containers via Docker API
+      - /var/run/docker.sock:/var/run/docker.sock
     profiles:
       - prod
 

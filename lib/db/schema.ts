@@ -112,7 +112,21 @@ export const clientConfig = pgTable("client_config", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 })
 
+export const managedContainers = pgTable("managed_containers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // Name used for the Docker container itself (unique among managed ones)
+  dockerName: text("docker_name").notNull().unique(),
+  image: text("image").notNull(),
+  // Optional link to a client row (for e-Snack instances later)
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
+  // Who created it via the dashboard
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
 export type Client = typeof clients.$inferSelect
 export type NewClient = typeof clients.$inferInsert
 export type ClientConfig = typeof clientConfig.$inferSelect
 export type NewClientConfig = typeof clientConfig.$inferInsert
+export type ManagedContainer = typeof managedContainers.$inferSelect
+export type NewManagedContainer = typeof managedContainers.$inferInsert
