@@ -152,14 +152,17 @@ export async function* deployClientInstanceStream(clientId: string): AsyncGenera
   }
 
   yield { type: "phase", phase: "config", message: "Génération du .env depuis client_config" }
-  await writeFile(path.join(clientDir, ".env"), buildEnvFile(client, config))
+  // Use a placeholder URL initially — we'll overwrite .env with the real
+  // ngrok URL and recreate api+frontend once the tunnel is up.
+  const placeholderUrl = `http://localhost`
+  await writeFile(path.join(clientDir, ".env"), buildEnvFile(client, config, placeholderUrl))
   await writeFile(path.join(clientDir, "docker-compose.override.yml"), buildOverrideCompose())
   yield { type: "log", message: ".env et docker-compose.override.yml écrits" }
 
   yield { type: "phase", phase: "build", message: "Build + démarrage de la stack (docker compose up --build)" }
   const upPromise = runBinStream(
     "docker",
-    ["compose", "-p", project, "--profile", "prod", "up", "-d", "--build"],
+    ["compose", "-p", project, "up", "-d", "--build"],
     { cwd: clientDir, onLine: pushLog }
   )
   yield* pollLogs(logs, upPromise)
@@ -192,6 +195,16 @@ export async function* deployClientInstanceStream(clientId: string): AsyncGenera
   yield { type: "phase", phase: "tunnel", message: "Attente de l'URL publique ngrok" }
   const publicUrl = await waitForNgrokUrl(ngrokName)
   yield { type: "log", message: `URL obtenue : ${publicUrl}` }
+
+  // Rewrite .env with the real URL and recreate api+frontend so they read it
+  yield { type: "phase", phase: "finalize", message: "Injection de PUBLIC_URL + recréation api/frontend" }
+  await writeFile(path.join(clientDir, ".env"), buildEnvFile(client, config, publicUrl))
+  const recreatePromise = runBinStream(
+    "docker",
+    ["compose", "-p", project, "up", "-d", "--force-recreate", "api", "frontend"],
+    { cwd: clientDir, onLine: pushLog }
+  )
+  yield* pollLogs(logs, recreatePromise)
 
   await db
     .update(clients)
@@ -243,8 +256,6 @@ export async function stopClientInstance(clientId: string): Promise<void> {
           "compose",
           "-p",
           client.composeProject,
-          "--profile",
-          "prod",
           "down",
           "-v",
           "--remove-orphans",
