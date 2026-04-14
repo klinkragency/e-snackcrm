@@ -55,8 +55,10 @@ services:
       INITIAL_DASHBOARD_ADMIN_EMAIL: ${INITIAL_DASHBOARD_ADMIN_EMAIL:-}
       INITIAL_DASHBOARD_ADMIN_NAME: ${INITIAL_DASHBOARD_ADMIN_NAME:-Admin}
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-}
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
       CLIENTS_DIR: /srv/clients
+      CLIENT_DOMAIN_SUFFIX: ${CLIENT_DOMAIN_SUFFIX:-panelcrapuleux.fr}
+      CADDY_CONTAINER: ${CADDY_CONTAINER:-caddy-host}
+      CADDY_SITES_DIR: /etc/caddy/sites
       NEXT_PUBLIC_APP_URL: ${BETTER_AUTH_URL}
     depends_on:
       postgres:
@@ -71,6 +73,8 @@ services:
       # Per-client instance directories (clone + .env written here,
       # paths match the host so Docker daemon can bind-mount into stacks)
       - /srv/clients:/srv/clients
+      # Caddy per-client site blocks — dashboard writes, Caddy container reads
+      - /etc/caddy/sites:/etc/caddy/sites
     profiles:
       - prod
 
