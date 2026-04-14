@@ -19,16 +19,16 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 nextjs
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/drizzle ./drizzle
 
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
-COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
-COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
-COPY --from=builder --chown=nextjs:nodejs /app/drizzle ./drizzle
-
-USER nextjs
+# Runs as root so it can read /var/run/docker.sock mounted from the host
+# (socket is root:docker on the host, no way to match GIDs reliably across
+# hosts). The container already has Docker API access which is effectively
+# root equivalent — running as root inside doesn't lower the security bar.
 EXPOSE 3000
 CMD ["node_modules/.bin/next", "start", "-H", "0.0.0.0", "-p", "3000"]
