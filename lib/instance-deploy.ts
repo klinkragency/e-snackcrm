@@ -415,55 +415,44 @@ async function recordProjectContainersInDb(project: string, clientId: string): P
 }
 
 /**
- * Polls the ngrok container's stdout for the "started tunnel … url=https://..."
- * log line. Reading container logs is more reliable than trying to curl the
- * ngrok local API (port 4040) because the ngrok Docker image is minimal and
- * ships neither curl nor wget.
+ * Polls the ngrok container's stdout for the "started tunnel … url=…" log line.
+ * We shell out to `docker logs` (plain text, always) instead of dockerode's
+ * Buffer API which returns stream-framed data that's awkward to decode.
+ * The ngrok image ships no curl/wget so we can't hit its :4040 API either.
  */
 async function waitForNgrokUrl(ngrokContainerName: string, timeoutMs = 30000): Promise<string> {
-  const docker = getDocker()
   const start = Date.now()
   const urlRegex = /url=(https:\/\/[^\s]+)/
-  const errorRegex = /lvl=(warn|eror|crit).*?msg="([^"]+)"/
+  const errorRegex = /lvl=(warn|eror|crit)[^\n]*msg="([^"]+)"/
 
   while (Date.now() - start < timeoutMs) {
     try {
-      const raw = (await docker.getContainer(ngrokContainerName).logs({
-        stdout: true,
-        stderr: true,
-        tail: 200,
-        follow: false,
-      })) as unknown as Buffer
+      const text = await captureLogs(ngrokContainerName)
 
-      const text = stripDockerLogFrames(raw)
-
-      // Success signal: "started tunnel … url=https://xxx.ngrok-free.app"
       const m = text.match(urlRegex)
       if (m) return m[1]
 
-      // Surface ngrok config errors as early as possible (invalid token, etc.)
       const err = text.match(errorRegex)
       if (err) throw new Error(`ngrok: ${err[2]}`)
     } catch (err) {
       if (err instanceof Error && err.message.startsWith("ngrok:")) throw err
-      // ignore transient read errors, retry
+      // ignore transient errors, retry
     }
     await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error("Timed out waiting for ngrok public URL (check NGROK_AUTHTOKEN)")
 }
 
-/** Strips the 8-byte Docker stream frame headers from a logs buffer. */
-function stripDockerLogFrames(buf: Buffer): string {
-  let text = ""
-  let i = 0
-  while (i + 8 <= buf.length) {
-    const size = buf.readUInt32BE(i + 4)
-    i += 8
-    const end = Math.min(i + size, buf.length)
-    text += buf.toString("utf8", i, end)
-    i = end
-  }
-  if (!text) return buf.toString("utf8")
-  return text
+function captureLogs(container: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let out = ""
+    const child = spawnProcess("docker", ["logs", container], { shell: false })
+    child.stdout?.on("data", (d) => { out += d.toString() })
+    child.stderr?.on("data", (d) => { out += d.toString() })
+    child.on("error", reject)
+    child.on("close", (code) => {
+      if (code === 0) resolve(out)
+      else reject(new Error(`docker logs exit ${code}`))
+    })
+  })
 }
