@@ -5,6 +5,7 @@ import { ArrowLeft, Pencil, Rocket, Globe, Mail, Phone, StickyNote } from "lucid
 import { db, clients, clientConfig } from "@/lib/db"
 import { ClientStatusBadge } from "@/components/client-status-badge"
 import { ClientStatusActions } from "@/components/client-status-actions"
+import { getCurrentUser } from "@/lib/auth/server"
 
 export default async function ClientDetailPage({
   params,
@@ -12,6 +13,8 @@ export default async function ClientDetailPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
+  const currentUser = await getCurrentUser()
+  const canWrite = currentUser?.role === "admin"
   const [client] = await db.select().from(clients).where(eq(clients.id, id)).limit(1)
   if (!client) notFound()
   const [config] = await db.select().from(clientConfig).where(eq(clientConfig.clientId, id)).limit(1)
@@ -33,13 +36,15 @@ export default async function ClientDetailPage({
           <p className="mt-0.5 text-sm text-neutral-500">{client.slug}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
-            href={`/clients/${client.id}/edit`}
-            className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-50"
-          >
-            <Pencil size={14} />
-            Modifier
-          </Link>
+          {canWrite && (
+            <Link
+              href={`/clients/${client.id}/edit`}
+              className="inline-flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-4 py-2 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-50"
+            >
+              <Pencil size={14} />
+              Modifier
+            </Link>
+          )}
           <Link
             href={`/clients/${client.id}/deploy`}
             className="inline-flex items-center gap-2 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-neutral-800"

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
 import { z } from "zod"
 import { db, clients } from "@/lib/db"
+import { requireAdmin } from "@/lib/auth/server"
 
 const statusSchema = z.object({
   status: z.enum(["draft", "provisioned", "deployed", "paused"]),
@@ -11,6 +12,12 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
+    await requireAdmin()
+  } catch {
+    return NextResponse.json({ error: "Forbidden: admin role required" }, { status: 403 })
+  }
+
   const { id } = await params
   const body = await request.json().catch(() => ({}))
   const parsed = statusSchema.safeParse(body)

@@ -1,9 +1,13 @@
 import Link from "next/link"
+import { redirect } from "next/navigation"
 import { ArrowLeft } from "lucide-react"
 import { ClientForm } from "@/components/client-form"
 import { Toaster } from "sonner"
+import { getCurrentUser } from "@/lib/auth/server"
 
-export default function NewClientPage() {
+export default async function NewClientPage() {
+  const currentUser = await getCurrentUser()
+  if (currentUser?.role !== "admin") redirect("/clients")
   return (
     <div>
       <Toaster position="top-center" />

@@ -3,8 +3,15 @@ import { eq } from "drizzle-orm"
 import { db, clients, clientConfig } from "@/lib/db"
 import { createClientSchema } from "@/lib/validation"
 import { generateClientSecrets } from "@/lib/secrets"
+import { requireAdmin } from "@/lib/auth/server"
 
 export async function POST(request: NextRequest) {
+  try {
+    await requireAdmin()
+  } catch {
+    return NextResponse.json({ error: "Forbidden: admin role required" }, { status: 403 })
+  }
+
   const body = await request.json().catch(() => ({}))
   const parsed = createClientSchema.safeParse(body)
   if (!parsed.success) {

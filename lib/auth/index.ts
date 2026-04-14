@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
-import { magicLink } from "better-auth/plugins"
+import { admin, magicLink } from "better-auth/plugins"
 import { nextCookies } from "better-auth/next-js"
 import { Resend } from "resend"
 import { db } from "@/lib/db"
@@ -66,6 +66,24 @@ export const auth = betterAuth({
         }
       },
     }),
+    admin({
+      defaultRole: "user",
+      adminRoles: ["admin"],
+      bannedUserMessage: "Votre compte a été désactivé. Contactez un administrateur.",
+    }),
     nextCookies(),
   ],
 })
+
+/**
+ * Super admin identity is hardcoded via env var (single account with
+ * bypass powers — ban/unban/disconnect other admins, change roles).
+ * Anyone else with role='admin' has normal admin privileges but cannot
+ * act against admin peers.
+ */
+export function isSuperAdmin(email: string | null | undefined): boolean {
+  if (!email) return false
+  const superEmail = process.env.SUPER_ADMIN_EMAIL
+  if (!superEmail) return false
+  return email.toLowerCase() === superEmail.toLowerCase()
+}

@@ -30,8 +30,9 @@ async function runSeed(): Promise<void> {
       email,
       name,
       emailVerified: true,
+      role: "admin",
     })
-    console.log(`✅ Initial dashboard admin seeded: ${email}`)
+    console.log(`✅ Initial dashboard admin seeded: ${email} (role=admin)`)
   } catch (err) {
     console.error("Failed to seed initial admin:", err)
   }

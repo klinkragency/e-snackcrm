@@ -2,11 +2,18 @@ import { NextRequest, NextResponse } from "next/server"
 import { eq } from "drizzle-orm"
 import { db, clients, clientConfig } from "@/lib/db"
 import { updateClientSchema } from "@/lib/validation"
+import { requireAdmin } from "@/lib/auth/server"
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
+    await requireAdmin()
+  } catch {
+    return NextResponse.json({ error: "Forbidden: admin role required" }, { status: 403 })
+  }
+
   const { id } = await params
   const body = await request.json().catch(() => ({}))
   const parsed = updateClientSchema.safeParse(body)
@@ -52,6 +59,12 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  try {
+    await requireAdmin()
+  } catch {
+    return NextResponse.json({ error: "Forbidden: admin role required" }, { status: 403 })
+  }
+
   const { id } = await params
   await db.delete(clients).where(eq(clients.id, id))
   return NextResponse.json({ ok: true })

@@ -3,13 +3,21 @@ import { randomUUID } from "crypto"
 import { eq } from "drizzle-orm"
 import { z } from "zod"
 import { db, user } from "@/lib/db"
+import { requireAdmin } from "@/lib/auth/server"
 
 const createSchema = z.object({
   email: z.string().email(),
   name: z.string().min(1),
+  role: z.enum(["admin", "user"]).default("user"),
 })
 
 export async function POST(request: NextRequest) {
+  try {
+    await requireAdmin()
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   const body = await request.json().catch(() => ({}))
   const parsed = createSchema.safeParse(body)
   if (!parsed.success) {
@@ -28,6 +36,7 @@ export async function POST(request: NextRequest) {
     id: randomUUID(),
     email: parsed.data.email,
     name: parsed.data.name,
+    role: parsed.data.role,
     emailVerified: true,
   })
 
@@ -35,6 +44,12 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  try {
+    await requireAdmin()
+  } catch {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+  }
+
   const { searchParams } = new URL(request.url)
   const id = searchParams.get("id")
   if (!id) return NextResponse.json({ error: "id required" }, { status: 400 })
