@@ -190,11 +190,14 @@ export async function* deployClientInstanceStream(clientId: string): AsyncGenera
   )
   yield* pollLogs(logs, upPromise)
 
-  yield { type: "phase", phase: "ngrok", message: "Lancement du tunnel ngrok" }
+  yield { type: "phase", phase: "ngrok", message: "Pull de ngrok/ngrok:latest puis lancement du tunnel" }
   const ngrokName = `${project}-ngrok`
   await stopAndRemoveIfExists(ngrokName)
 
   const docker = getDocker()
+  await pullImage("ngrok/ngrok:latest")
+  yield { type: "log", message: "Image ngrok/ngrok:latest prête" }
+
   const ngrok = await docker.createContainer({
     name: ngrokName,
     Image: "ngrok/ngrok:latest",
@@ -314,6 +317,19 @@ async function stopAndRemoveIfExists(containerName: string): Promise<void> {
   } catch {
     // Not running / doesn't exist, ignore
   }
+}
+
+async function pullImage(image: string): Promise<void> {
+  const docker = getDocker()
+  await new Promise<void>((resolve, reject) => {
+    docker.pull(image, (err: Error | null, stream: NodeJS.ReadableStream) => {
+      if (err) return reject(err)
+      docker.modem.followProgress(stream, (progressErr: Error | null) => {
+        if (progressErr) return reject(progressErr)
+        resolve()
+      })
+    })
+  })
 }
 
 async function recordProjectContainersInDb(project: string, clientId: string): Promise<void> {
