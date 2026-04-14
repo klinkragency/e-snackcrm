@@ -155,6 +155,14 @@ export async function* deployClientInstanceStream(clientId: string): AsyncGenera
   const pushLog = (message: string) => logs.push({ type: "log", message })
 
   yield { type: "phase", phase: "clone", message: `Préparation de ${clientDir}` }
+
+  // Auto-cleanup: any pre-existing containers / network / volumes from a
+  // previous failed attempt would collide on name. Nuke them first.
+  const cleanupCount = await forceCleanupProject(project)
+  if (cleanupCount > 0) {
+    yield { type: "log", message: `Nettoyage: ${cleanupCount} ressource(s) résiduelle(s) supprimée(s)` }
+  }
+
   await mkdir(clientDir, { recursive: true })
 
   if (await exists(path.join(clientDir, ".git"))) {
@@ -269,29 +277,27 @@ async function* pollLogs(
 export async function stopClientInstance(clientId: string): Promise<void> {
   const [client] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1)
   if (!client) throw new Error("Client not found")
-  if (!client.composeProject) return
 
+  const project = client.composeProject || `esnack-${client.slug}`
   const clientDir = path.join(CLIENTS_DIR, client.slug)
-  await stopAndRemoveIfExists(`${client.composeProject}-ngrok`)
 
+  // Try the clean path first (compose down) if the compose file is still around
   if (await exists(path.join(clientDir, "docker-compose.yml"))) {
     try {
       await runBinStream(
         "docker",
-        [
-          "compose",
-          "-p",
-          client.composeProject,
-          "down",
-          "-v",
-          "--remove-orphans",
-        ],
+        ["compose", "-p", project, "down", "-v", "--remove-orphans"],
         { cwd: clientDir, onLine: () => {} }
       )
     } catch (err) {
-      console.warn("compose down failed, continuing:", err)
+      console.warn("compose down failed, falling back to force cleanup:", err)
     }
   }
+
+  // Always follow up with force cleanup — covers dead containers, networks,
+  // volumes that compose missed, and handles the case where the directory
+  // was deleted by hand.
+  await forceCleanupProject(project)
 
   try {
     await rm(clientDir, { recursive: true, force: true })
@@ -308,6 +314,61 @@ export async function stopClientInstance(clientId: string): Promise<void> {
       updatedAt: new Date(),
     })
     .where(eq(clients.id, clientId))
+}
+
+/**
+ * Kills every container / network / volume associated with a compose project
+ * name, regardless of their state. Used for recovery from half-failed deploys.
+ * Returns the total number of resources removed.
+ */
+export async function forceCleanupProject(project: string): Promise<number> {
+  const docker = getDocker()
+  let count = 0
+
+  // 1. Containers (by label set by compose OR by name prefix — covers the
+  //    case where a container exists by name but with no label, e.g. our
+  //    ngrok sidecar that uses its own label).
+  const containers = await docker.listContainers({
+    all: true,
+    filters: {
+      label: [`com.docker.compose.project=${project}`],
+    },
+  })
+  for (const c of containers) {
+    try {
+      await docker.getContainer(c.Id).remove({ force: true, v: true })
+      count++
+    } catch {}
+  }
+  // Also grab our ngrok sidecar by name
+  try {
+    await docker.getContainer(`${project}-ngrok`).remove({ force: true, v: true })
+    count++
+  } catch {}
+
+  // 2. Networks named after the project (compose creates {project}_default)
+  const networks = await docker.listNetworks({
+    filters: { label: [`com.docker.compose.project=${project}`] },
+  })
+  for (const n of networks) {
+    try {
+      await docker.getNetwork(n.Id).remove()
+      count++
+    } catch {}
+  }
+
+  // 3. Volumes (postgres_data, redis_data, caddy_data, caddy_config)
+  const volumes = await docker.listVolumes({
+    filters: { label: [`com.docker.compose.project=${project}`] },
+  })
+  for (const v of volumes.Volumes || []) {
+    try {
+      await docker.getVolume(v.Name).remove()
+      count++
+    } catch {}
+  }
+
+  return count
 }
 
 async function stopAndRemoveIfExists(containerName: string): Promise<void> {

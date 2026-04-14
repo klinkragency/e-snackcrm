@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Play, Square, Loader2, ExternalLink, Box, X, Terminal } from "lucide-react"
+import { Play, Square, Loader2, ExternalLink, Box, X, Terminal, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
@@ -24,6 +24,7 @@ type DeployEvent =
 export function InstanceBlock({ clientId, clientSlug, publicUrl, composeProject, canWrite }: Props) {
   const router = useRouter()
   const [stopping, setStopping] = useState(false)
+  const [cleaning, setCleaning] = useState(false)
   const [logsOpen, setLogsOpen] = useState(false)
   const [events, setEvents] = useState<DeployEvent[]>([])
   const [deploying, setDeploying] = useState(false)
@@ -110,6 +111,27 @@ export function InstanceBlock({ clientId, clientSlug, publicUrl, composeProject,
     }
   }
 
+  const forceCleanup = async () => {
+    if (
+      !confirm(
+        `Force cleanup de ${clientSlug}: supprime tous les containers / networks / volumes / fichiers du stack même en état cassé. À utiliser si un déploiement a foiré et laisse des résidus.`
+      )
+    )
+      return
+    setCleaning(true)
+    try {
+      const res = await fetch(`/api/clients/${clientId}/instance/cleanup`, { method: "POST" })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(body.error || "Erreur")
+      toast.success(`Cleanup OK (${body.removed ?? 0} ressource(s) supprimée(s))`)
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur", { duration: 8000 })
+    } finally {
+      setCleaning(false)
+    }
+  }
+
   return (
     <>
       <div className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
@@ -168,21 +190,31 @@ export function InstanceBlock({ clientId, clientSlug, publicUrl, composeProject,
               {isRunning ? (
                 <button
                   onClick={stop}
-                  disabled={stopping || deploying}
+                  disabled={stopping || deploying || cleaning}
                   className="inline-flex items-center gap-2 rounded-full border border-red-200 bg-white px-4 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 disabled:opacity-50"
                 >
                   {stopping ? <Loader2 size={14} className="animate-spin" /> : <Square size={13} />}
                   Arrêter
                 </button>
               ) : (
-                <button
-                  onClick={deploy}
-                  disabled={deploying || stopping}
-                  className="inline-flex items-center gap-2 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-neutral-800 disabled:opacity-50"
-                >
-                  {deploying ? <Loader2 size={14} className="animate-spin" /> : <Play size={13} />}
-                  Lancer démo
-                </button>
+                <>
+                  <button
+                    onClick={forceCleanup}
+                    disabled={deploying || cleaning || stopping}
+                    title="Supprime tous les résidus d'un déploiement raté"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-600 transition-colors hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                  >
+                    {cleaning ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={13} />}
+                  </button>
+                  <button
+                    onClick={deploy}
+                    disabled={deploying || stopping || cleaning}
+                    className="inline-flex items-center gap-2 rounded-full bg-black px-5 py-2 text-sm font-semibold text-white transition-colors hover:bg-neutral-800 disabled:opacity-50"
+                  >
+                    {deploying ? <Loader2 size={14} className="animate-spin" /> : <Play size={13} />}
+                    Lancer démo
+                  </button>
+                </>
               )}
             </div>
           )}

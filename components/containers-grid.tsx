@@ -138,14 +138,22 @@ function ContainerCard({ container, onClick }: { container: ContainerSummary; on
         {container.status}
       </button>
       <div className="flex flex-wrap items-center gap-1">
-        {container.clientSlug && container.clientId && (
-          <Link
-            href={`/clients/${container.clientId}`}
-            className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
-          >
-            <Tag size={9} />#{container.clientSlug}
-          </Link>
-        )}
+        {container.clientSlug &&
+          (container.clientId ? (
+            <Link
+              href={`/clients/${container.clientId}`}
+              className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+            >
+              <Tag size={9} />#{container.clientSlug}
+            </Link>
+          ) : (
+            <span
+              title="Stack orpheline — client inconnu ou supprimé"
+              className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700"
+            >
+              <Tag size={9} />#{container.clientSlug}
+            </span>
+          ))}
         {container.ports.slice(0, 3).map((p, i) => (
           <span
             key={i}

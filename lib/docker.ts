@@ -26,62 +26,56 @@ export type ContainerSummary = {
   clientSlug: string | null
 }
 
-/** Lists every container managed by the dashboard:
- * - manually created via the "new container" dialog (tagged with MANAGED_LABEL)
- * - auto-created as part of a client instance stack (tracked in managed_containers DB table)
+/** Lists every container the dashboard cares about:
+ *  A) manually created via the "new container" dialog (MANAGED_LABEL)
+ *  B) part of a client instance stack, matched by compose project label
+ *     (com.docker.compose.project=esnack-*)
  *
- * Source of truth is the DB (for client linkage); Docker API gives live state.
+ * DB rows provide clientId/slug linkage for the badge; Docker is the
+ * source of truth for live state. Containers not in the DB yet (orphans
+ * of a failed deploy) still show up so they can be inspected and killed.
  */
 export async function listManagedContainers(
   dbRows: { dockerName: string; clientId: string | null; clientSlug: string | null }[]
 ): Promise<ContainerSummary[]> {
   const docker = getDocker()
 
-  // Two sources combined:
-  //  A) every container with the klinkragency.managed=true label (manual)
-  //  B) every container matching a name in the DB (client-stack containers
-  //     which we don't re-label after compose creates them)
-  const labelled = await docker.listContainers({
-    all: true,
-    filters: { label: [`${MANAGED_LABEL}=true`] },
-  })
+  const all = await docker.listContainers({ all: true })
 
   const dbNameToRow = new Map(dbRows.map((r) => [r.dockerName, r]))
-  const namedFilter =
-    dbRows.length > 0
-      ? await docker.listContainers({
-          all: true,
-          filters: { name: dbRows.map((r) => `^/${escapeRegex(r.dockerName)}$`) },
-        })
-      : []
 
-  // Dedupe by container id
-  const byId = new Map<string, Docker.ContainerInfo>()
-  for (const c of [...labelled, ...namedFilter]) byId.set(c.Id, c)
-
-  return Array.from(byId.values()).map((c) => {
-    const name = c.Names[0]?.replace(/^\//, "") ?? "unknown"
-    const dbRow = dbNameToRow.get(name)
-    return {
-      id: c.Id,
-      name,
-      image: c.Image,
-      state: c.State,
-      status: c.Status,
-      createdAt: c.Created * 1000,
-      ports: c.Ports.map((p) => ({
-        privatePort: p.PrivatePort,
-        publicPort: p.PublicPort,
-        type: p.Type,
-      })),
-      clientId: dbRow?.clientId ?? (c.Labels?.["klinkragency.client_id"] ?? null),
-      clientSlug: dbRow?.clientSlug ?? (c.Labels?.["klinkragency.client_slug"] ?? null),
-    }
-  })
-}
-
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  return all
+    .filter((c) => {
+      if (c.Labels?.[MANAGED_LABEL] === "true") return true
+      const project = c.Labels?.["com.docker.compose.project"]
+      if (project?.startsWith("esnack-")) return true
+      // Also include anything a DB row names explicitly (belt-and-suspenders)
+      const name = c.Names[0]?.replace(/^\//, "")
+      return name ? dbNameToRow.has(name) : false
+    })
+    .map((c) => {
+      const name = c.Names[0]?.replace(/^\//, "") ?? "unknown"
+      const dbRow = dbNameToRow.get(name)
+      const project = c.Labels?.["com.docker.compose.project"]
+      // Derive slug from compose project name: esnack-<slug>
+      const composeSlug = project?.startsWith("esnack-") ? project.slice("esnack-".length) : null
+      return {
+        id: c.Id,
+        name,
+        image: c.Image,
+        state: c.State,
+        status: c.Status,
+        createdAt: c.Created * 1000,
+        ports: c.Ports.map((p) => ({
+          privatePort: p.PrivatePort,
+          publicPort: p.PublicPort,
+          type: p.Type,
+        })),
+        clientId: dbRow?.clientId ?? c.Labels?.["klinkragency.client_id"] ?? null,
+        clientSlug:
+          dbRow?.clientSlug ?? c.Labels?.["klinkragency.client_slug"] ?? composeSlug,
+      }
+    })
 }
 
 export async function getContainerInfo(id: string) {
