@@ -32,7 +32,7 @@ services:
     container_name: esnackcrm-migrate
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-esnackcrm}:${POSTGRES_PASSWORD:-esnackcrm_dev}@postgres:5432/${POSTGRES_DB:-esnackcrm_db}
-    command: ["node", "node_modules/drizzle-kit/bin.cjs", "migrate"]
+    command: ["node", "scripts/migrate.mjs"]
     depends_on:
       postgres:
         condition: service_healthy
