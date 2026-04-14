@@ -159,7 +159,7 @@ export function InstanceBlock({ clientId, clientSlug, publicUrl, composeProject,
                   <ExternalLink size={13} />
                 </a>
                 <p className="text-xs text-neutral-500">
-                  URL publique ngrok. Tunnel maintenu tant que l&apos;instance tourne.
+                  URL publique via Caddy + Let&apos;s Encrypt. Permanente tant que l&apos;instance tourne.
                 </p>
                 <Link
                   href="/containers"
@@ -171,7 +171,7 @@ export function InstanceBlock({ clientId, clientSlug, publicUrl, composeProject,
               </div>
             ) : (
               <p className="text-sm text-neutral-500">
-                Aucune instance en cours. Clique sur <b>Lancer démo</b> pour cloner e-snack, configurer le .env depuis ce client, démarrer la stack Docker et exposer l&apos;URL via ngrok. Les logs s&apos;affichent en temps réel.
+                Aucune instance en cours. Clique sur <b>Lancer démo</b> pour cloner e-snack, configurer le .env depuis ce client, démarrer la stack Docker et publier sur <code className="rounded bg-neutral-100 px-1 py-0.5 text-[11px]">&lt;slug&gt;.panelcrapuleux.fr</code> via Caddy. Les logs s&apos;affichent en temps réel.
               </p>
             )}
           </div>
