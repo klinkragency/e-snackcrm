@@ -414,53 +414,56 @@ async function recordProjectContainersInDb(project: string, clientId: string): P
   }
 }
 
-async function waitForNgrokUrl(ngrokContainerName: string, timeoutMs = 20000): Promise<string> {
+/**
+ * Polls the ngrok container's stdout for the "started tunnel … url=https://..."
+ * log line. Reading container logs is more reliable than trying to curl the
+ * ngrok local API (port 4040) because the ngrok Docker image is minimal and
+ * ships neither curl nor wget.
+ */
+async function waitForNgrokUrl(ngrokContainerName: string, timeoutMs = 30000): Promise<string> {
   const docker = getDocker()
   const start = Date.now()
+  const urlRegex = /url=(https:\/\/[^\s]+)/
+  const errorRegex = /lvl=(warn|eror|crit).*?msg="([^"]+)"/
+
   while (Date.now() - start < timeoutMs) {
     try {
-      const execHandle = await docker
-        .getContainer(ngrokContainerName)
-        .exec({
-          Cmd: ["wget", "-qO-", "http://127.0.0.1:4040/api/tunnels"],
-          AttachStdout: true,
-          AttachStderr: true,
-        })
-      const stream = await execHandle.start({ hijack: true, stdin: false })
-      const body = await collectStream(stream)
-      const json = extractJson(body)
-      if (json) {
-        const parsed = JSON.parse(json) as { tunnels?: { public_url?: string }[] }
-        const url = parsed.tunnels?.[0]?.public_url
-        if (url) return url
-      }
-    } catch {}
-    await new Promise((r) => setTimeout(r, 1000))
+      const raw = (await docker.getContainer(ngrokContainerName).logs({
+        stdout: true,
+        stderr: true,
+        tail: 200,
+        follow: false,
+      })) as unknown as Buffer
+
+      const text = stripDockerLogFrames(raw)
+
+      // Success signal: "started tunnel … url=https://xxx.ngrok-free.app"
+      const m = text.match(urlRegex)
+      if (m) return m[1]
+
+      // Surface ngrok config errors as early as possible (invalid token, etc.)
+      const err = text.match(errorRegex)
+      if (err) throw new Error(`ngrok: ${err[2]}`)
+    } catch (err) {
+      if (err instanceof Error && err.message.startsWith("ngrok:")) throw err
+      // ignore transient read errors, retry
+    }
+    await new Promise((r) => setTimeout(r, 500))
   }
   throw new Error("Timed out waiting for ngrok public URL (check NGROK_AUTHTOKEN)")
 }
 
-function collectStream(stream: NodeJS.ReadableStream): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = []
-    stream.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)))
-    stream.on("end", () => resolve(Buffer.concat(chunks)))
-    stream.on("error", reject)
-  })
-}
-
-function extractJson(buf: Buffer): string | null {
+/** Strips the 8-byte Docker stream frame headers from a logs buffer. */
+function stripDockerLogFrames(buf: Buffer): string {
   let text = ""
   let i = 0
-  while (i < buf.length) {
-    if (i + 8 > buf.length) break
+  while (i + 8 <= buf.length) {
     const size = buf.readUInt32BE(i + 4)
     i += 8
     const end = Math.min(i + size, buf.length)
     text += buf.toString("utf8", i, end)
     i = end
   }
-  if (!text) text = buf.toString("utf8")
-  const jsonStart = text.indexOf("{")
-  return jsonStart >= 0 ? text.slice(jsonStart) : null
+  if (!text) return buf.toString("utf8")
+  return text
 }
