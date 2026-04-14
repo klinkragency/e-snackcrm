@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
 import { headers } from "next/headers"
-import { Users, Settings, LayoutDashboard } from "lucide-react"
+import { Users, Settings, LayoutDashboard, Box } from "lucide-react"
 import { auth } from "@/lib/auth"
 import { LogoutButton } from "@/components/logout-button"
 
@@ -33,6 +33,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             >
               <Users size={16} />
               Clients
+            </Link>
+            <Link
+              href="/containers"
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
+            >
+              <Box size={16} />
+              Containers
             </Link>
             <Link
               href="/settings"
