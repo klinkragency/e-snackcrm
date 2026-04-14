@@ -1,0 +1,18 @@
+# Klinkragency Dashboard — Caddy reverse proxy config.
+# Installed at /etc/caddy/Caddyfile on the VPS (system-level, not containerized).
+# Caddy handles TLS via Let's Encrypt automatically — just needs the domain
+# pointing to this VPS's public IP.
+
+{$DOMAIN} {
+	encode gzip zstd
+
+	# Better Auth cookies must be Secure, so force HTTPS (Caddy redirects http→https by default).
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	reverse_proxy 127.0.0.1:3000
+}

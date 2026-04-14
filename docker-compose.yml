@@ -1,3 +1,12 @@
+# Compose file used for BOTH local dev and production.
+#
+# Local dev: only start Postgres, run Next.js with `npm run dev`:
+#     docker compose up -d postgres
+#     npm run dev
+#
+# Production: start everything:
+#     docker compose up -d
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -16,6 +25,45 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  migrate:
+    image: esnackcrm-app
+    build: .
+    container_name: esnackcrm-migrate
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-esnackcrm}:${POSTGRES_PASSWORD:-esnackcrm_dev}@postgres:5432/${POSTGRES_DB:-esnackcrm_db}
+    command: ["node", "node_modules/drizzle-kit/bin.cjs", "migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    profiles:
+      - prod
+
+  app:
+    image: esnackcrm-app
+    build: .
+    container_name: esnackcrm-app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-esnackcrm}:${POSTGRES_PASSWORD:-esnackcrm_dev}@postgres:5432/${POSTGRES_DB:-esnackcrm_db}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM_ADDRESS: ${EMAIL_FROM_ADDRESS}
+      INITIAL_DASHBOARD_ADMIN_EMAIL: ${INITIAL_DASHBOARD_ADMIN_EMAIL:-}
+      INITIAL_DASHBOARD_ADMIN_NAME: ${INITIAL_DASHBOARD_ADMIN_NAME:-Admin}
+      NEXT_PUBLIC_APP_URL: ${BETTER_AUTH_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:3000:3000"
+    profiles:
+      - prod
 
 volumes:
   postgres_data:

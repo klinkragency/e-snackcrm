@@ -32,25 +32,38 @@ export const auth = betterAuth({
       disableSignUp: true,
       expiresIn: 60 * 15, // 15 minutes
       sendMagicLink: async ({ email, url }) => {
-        if (!resend) {
-          // Dev fallback: log the link to stdout.
+        const logFallback = () => {
           console.log("\n┌─ MAGIC LINK (dev) ─────────────────────────────────")
           console.log(`│ Email: ${email}`)
           console.log(`│ Link:  ${url}`)
           console.log("└─────────────────────────────────────────────────────\n")
+        }
+
+        if (!resend) {
+          logFallback()
           return
         }
-        await resend.emails.send({
-          from: emailFrom,
-          to: email,
-          subject: "Connexion Klinkragency Dashboard",
-          html: `
-            <p>Bonjour,</p>
-            <p>Voici votre lien de connexion au dashboard Klinkragency (valable 15 minutes) :</p>
-            <p><a href="${url}">Se connecter</a></p>
-            <p>Si vous n'avez pas demandé ce lien, ignorez cet email.</p>
-          `,
-        })
+
+        try {
+          const { error } = await resend.emails.send({
+            from: emailFrom,
+            to: email,
+            subject: "Connexion Klinkragency Dashboard",
+            html: `
+              <p>Bonjour,</p>
+              <p>Voici votre lien de connexion au dashboard Klinkragency (valable 15 minutes) :</p>
+              <p><a href="${url}">Se connecter</a></p>
+              <p>Si vous n'avez pas demandé ce lien, ignorez cet email.</p>
+            `,
+          })
+          if (error) {
+            console.warn("[magic-link] Resend error — falling back to console:", error.message)
+            logFallback()
+          }
+        } catch (err) {
+          console.warn("[magic-link] Resend threw — falling back to console:", err)
+          logFallback()
+        }
       },
     }),
     nextCookies(),
