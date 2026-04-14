@@ -130,8 +130,8 @@ export function ClientForm({ mode, clientId, initialValues }: Props) {
             <input type="text" required value={values.initialAdminName} onChange={update("initialAdminName")} className={inputCls} />
           </Field>
         </div>
-        <Field label="Mot de passe admin restaurant" required help="Min. 8 caractères. Transmis au client pour son premier login.">
-          <input type="text" required minLength={8} value={values.initialAdminPassword} onChange={update("initialAdminPassword")} className={inputCls} />
+        <Field label="Mot de passe admin restaurant" required help="Min. 12 caractères (requis par e-snack en mode production). Transmis au client pour son premier login.">
+          <input type="text" required minLength={12} value={values.initialAdminPassword} onChange={update("initialAdminPassword")} className={inputCls} />
         </Field>
       </Section>
 

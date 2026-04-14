@@ -14,7 +14,9 @@ export const createClientSchema = z.object({
 
   // Seed values for the client's e-Snack instance
   initialAdminEmail: z.string().email("Email admin restaurant invalide"),
-  initialAdminPassword: z.string().min(8, "Minimum 8 caractères"),
+  initialAdminPassword: z
+    .string()
+    .min(12, "Minimum 12 caractères (requis par e-snack en production)"),
   initialAdminName: z.string().min(1, "Nom admin requis"),
   initialRestaurantName: z.string().min(1, "Nom restaurant requis"),
   initialRestaurantSlug: z

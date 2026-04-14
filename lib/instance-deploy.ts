@@ -140,6 +140,12 @@ export async function* deployClientInstanceStream(clientId: string): AsyncGenera
   const authtoken = process.env.NGROK_AUTHTOKEN
   if (!authtoken) throw new Error("NGROK_AUTHTOKEN is not configured on the dashboard")
 
+  if (config.initialAdminPassword.length < 12) {
+    throw new Error(
+      "Le mot de passe admin restaurant doit faire au moins 12 caractères pour qu'e-snack démarre en prod. Modifie-le dans la fiche client et réessaie."
+    )
+  }
+
   const slug = client.slug
   const project = `esnack-${slug}`
   const clientDir = path.join(CLIENTS_DIR, slug)
