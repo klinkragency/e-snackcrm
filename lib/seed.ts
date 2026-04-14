@@ -1,12 +1,19 @@
 import { randomUUID } from "crypto"
+import { eq } from "drizzle-orm"
 import { db, user } from "@/lib/db"
 
 let seedPromise: Promise<void> | null = null
 
 /**
- * Creates the initial dashboard admin from INITIAL_DASHBOARD_ADMIN_EMAIL
- * if no user exists yet. Idempotent and safe to call repeatedly —
- * we memoize the first run per process to avoid querying on every request.
+ * Runs two safety nets at first render of the process (memoized):
+ *
+ * 1. If the user table is empty and INITIAL_DASHBOARD_ADMIN_EMAIL is set,
+ *    insert that user with role=admin so the owner can log in on a fresh
+ *    deployment.
+ * 2. If SUPER_ADMIN_EMAIL is set and the matching user exists with a
+ *    role other than 'admin', promote them. This guarantees the super
+ *    admin is always reachable even if a previous deploy seeded them
+ *    with the wrong role (pre-admin-plugin data).
  */
 export async function ensureInitialAdminSeeded(): Promise<void> {
   if (!seedPromise) {
@@ -16,6 +23,11 @@ export async function ensureInitialAdminSeeded(): Promise<void> {
 }
 
 async function runSeed(): Promise<void> {
+  await seedInitialAdminIfEmpty()
+  await promoteSuperAdmin()
+}
+
+async function seedInitialAdminIfEmpty(): Promise<void> {
   const email = process.env.INITIAL_DASHBOARD_ADMIN_EMAIL
   if (!email) return
 
@@ -35,5 +47,25 @@ async function runSeed(): Promise<void> {
     console.log(`✅ Initial dashboard admin seeded: ${email} (role=admin)`)
   } catch (err) {
     console.error("Failed to seed initial admin:", err)
+  }
+}
+
+async function promoteSuperAdmin(): Promise<void> {
+  const superEmail = process.env.SUPER_ADMIN_EMAIL
+  if (!superEmail) return
+
+  try {
+    const [existing] = await db
+      .select({ id: user.id, role: user.role })
+      .from(user)
+      .where(eq(user.email, superEmail))
+      .limit(1)
+
+    if (!existing || existing.role === "admin") return
+
+    await db.update(user).set({ role: "admin" }).where(eq(user.id, existing.id))
+    console.log(`✅ Super admin promoted to role=admin: ${superEmail}`)
+  } catch (err) {
+    console.error("Failed to promote super admin:", err)
   }
 }
