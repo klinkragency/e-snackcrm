@@ -90,7 +90,7 @@ function LoginContent() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={status === "sending"}
-              className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none transition-all placeholder:text-neutral-400 focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 disabled:opacity-50"
+              className="w-full rounded-xl border border-neutral-200 bg-white px-4 py-3 text-sm outline-none transition-all placeholder:text-black focus:border-neutral-900 focus:ring-2 focus:ring-neutral-900/10 disabled:opacity-50"
             />
 
             {status === "error" && (
