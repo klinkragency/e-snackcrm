@@ -19,6 +19,19 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
+# Install runtime tools the app shells out to:
+# - git: clone e-snack template for per-client instances
+# - docker CLI + compose plugin: orchestrate client stacks on the host's Docker daemon
+RUN apk add --no-cache git curl ca-certificates && \
+    curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-28.5.0.tgz | tar xz -C /tmp && \
+    mv /tmp/docker/docker /usr/local/bin/ && \
+    rm -rf /tmp/docker && \
+    mkdir -p /usr/local/libexec/docker/cli-plugins && \
+    curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64" \
+      -o /usr/local/libexec/docker/cli-plugins/docker-compose && \
+    chmod +x /usr/local/libexec/docker/cli-plugins/docker-compose && \
+    docker --version && docker compose version
+
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/node_modules ./node_modules

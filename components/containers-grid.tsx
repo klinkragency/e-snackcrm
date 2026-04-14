@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Plus, Loader2, Box } from "lucide-react"
+import Link from "next/link"
+import { Plus, Loader2, Box, Tag } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { ContainerDrawer } from "@/components/container-drawer"
 import { NewContainerDialog } from "@/components/new-container-dialog"
@@ -14,6 +15,8 @@ export type ContainerSummary = {
   status: string
   createdAt: number
   ports: { privatePort: number; publicPort?: number; type: string }[]
+  clientId: string | null
+  clientSlug: string | null
 }
 
 export function ContainersGrid({ canWrite }: { canWrite: boolean }) {
@@ -116,11 +119,8 @@ function ContainerCard({ container, onClick }: { container: ContainerSummary; on
   const isProblematic = container.state === "restarting" || container.state === "paused"
 
   return (
-    <button
-      onClick={onClick}
-      className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 text-left shadow-sm transition-all hover:border-neutral-300 hover:shadow-md"
-    >
-      <div className="flex items-start justify-between gap-3">
+    <div className="flex flex-col gap-3 rounded-2xl border border-neutral-200 bg-white p-4 shadow-sm transition-all hover:border-neutral-300 hover:shadow-md">
+      <button onClick={onClick} className="flex items-start justify-between gap-3 text-left">
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-neutral-900">{container.name}</p>
           <p className="truncate text-xs text-neutral-500">{container.image}</p>
@@ -133,25 +133,33 @@ function ContainerCard({ container, onClick }: { container: ContainerSummary; on
             isProblematic && "bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.15)]"
           )}
         />
+      </button>
+      <button onClick={onClick} className="text-left text-[11px] text-neutral-500">
+        {container.status}
+      </button>
+      <div className="flex flex-wrap items-center gap-1">
+        {container.clientSlug && container.clientId && (
+          <Link
+            href={`/clients/${container.clientId}`}
+            className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700 hover:bg-blue-100"
+          >
+            <Tag size={9} />#{container.clientSlug}
+          </Link>
+        )}
+        {container.ports.slice(0, 3).map((p, i) => (
+          <span
+            key={i}
+            className="rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-mono text-neutral-700"
+          >
+            {p.publicPort ? `${p.publicPort}→` : ""}
+            {p.privatePort}/{p.type}
+          </span>
+        ))}
+        {container.ports.length > 3 && (
+          <span className="text-[10px] text-neutral-500">+{container.ports.length - 3}</span>
+        )}
       </div>
-      <p className="text-[11px] text-neutral-500">{container.status}</p>
-      {container.ports.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {container.ports.slice(0, 3).map((p, i) => (
-            <span
-              key={i}
-              className="rounded-md bg-neutral-100 px-1.5 py-0.5 text-[10px] font-mono text-neutral-700"
-            >
-              {p.publicPort ? `${p.publicPort}→` : ""}
-              {p.privatePort}/{p.type}
-            </span>
-          ))}
-          {container.ports.length > 3 && (
-            <span className="text-[10px] text-neutral-500">+{container.ports.length - 3}</span>
-          )}
-        </div>
-      )}
-    </button>
+    </div>
   )
 }
 

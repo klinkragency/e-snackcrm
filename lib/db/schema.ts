@@ -83,6 +83,10 @@ export const clients = pgTable("clients", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deployedAt: timestamp("deployed_at"),
+  // Live instance fields (populated when a demo instance is running)
+  publicUrl: text("public_url"),
+  composeProject: text("compose_project"),
+  ngrokContainerId: text("ngrok_container_id"),
 })
 
 export const clientConfig = pgTable("client_config", {

@@ -55,6 +55,8 @@ services:
       INITIAL_DASHBOARD_ADMIN_EMAIL: ${INITIAL_DASHBOARD_ADMIN_EMAIL:-}
       INITIAL_DASHBOARD_ADMIN_NAME: ${INITIAL_DASHBOARD_ADMIN_NAME:-Admin}
       SUPER_ADMIN_EMAIL: ${SUPER_ADMIN_EMAIL:-}
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:-}
+      CLIENTS_DIR: /srv/clients
       NEXT_PUBLIC_APP_URL: ${BETTER_AUTH_URL}
     depends_on:
       postgres:
@@ -64,8 +66,11 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
-      # Mounted read-write so the dashboard can manage containers via Docker API
+      # Manage containers on the host via Docker API
       - /var/run/docker.sock:/var/run/docker.sock
+      # Per-client instance directories (clone + .env written here,
+      # paths match the host so Docker daemon can bind-mount into stacks)
+      - /srv/clients:/srv/clients
     profiles:
       - prod
 

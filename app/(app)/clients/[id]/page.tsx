@@ -2,9 +2,11 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { eq } from "drizzle-orm"
 import { ArrowLeft, Pencil, Rocket, Globe, Mail, Phone, StickyNote } from "lucide-react"
+import { Toaster } from "sonner"
 import { db, clients, clientConfig } from "@/lib/db"
 import { ClientStatusBadge } from "@/components/client-status-badge"
 import { ClientStatusActions } from "@/components/client-status-actions"
+import { InstanceBlock } from "@/components/instance-block"
 import { getCurrentUser } from "@/lib/auth/server"
 
 export default async function ClientDetailPage({
@@ -21,6 +23,7 @@ export default async function ClientDetailPage({
 
   return (
     <div>
+      <Toaster position="top-center" />
       <div className="mb-6 flex items-center gap-3">
         <Link
           href="/clients"
@@ -79,6 +82,16 @@ export default async function ClientDetailPage({
             )}
           </div>
         </Card>
+
+        <div className="lg:col-span-3">
+          <InstanceBlock
+            clientId={client.id}
+            clientSlug={client.slug}
+            publicUrl={client.publicUrl}
+            composeProject={client.composeProject}
+            canWrite={canWrite}
+          />
+        </div>
 
         {config && (
           <Card title="Config e-Snack (résumé)" className="lg:col-span-3">

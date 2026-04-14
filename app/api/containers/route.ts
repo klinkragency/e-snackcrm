@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
+import { eq } from "drizzle-orm"
 import { z } from "zod"
-import { db, managedContainers } from "@/lib/db"
+import { db, managedContainers, clients } from "@/lib/db"
 import { getCurrentUser, requireAdmin } from "@/lib/auth/server"
 import { listManagedContainers, createAndStartContainer } from "@/lib/docker"
 
@@ -9,7 +10,17 @@ export async function GET() {
     const user = await getCurrentUser()
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    const containers = await listManagedContainers()
+    // Pull DB rows with associated client slug/id so we can badge each card
+    const rows = await db
+      .select({
+        dockerName: managedContainers.dockerName,
+        clientId: managedContainers.clientId,
+        clientSlug: clients.slug,
+      })
+      .from(managedContainers)
+      .leftJoin(clients, eq(managedContainers.clientId, clients.id))
+
+    const containers = await listManagedContainers(rows)
     return NextResponse.json({ containers })
   } catch (err) {
     return NextResponse.json(
