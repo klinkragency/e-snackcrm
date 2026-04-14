@@ -9,30 +9,44 @@ import type { Client, ClientConfig } from "@/lib/db/schema"
 const CLIENTS_DIR = process.env.CLIENTS_DIR || "/srv/clients"
 const ESNACK_REPO = "https://github.com/klinkragency/e-snack.git"
 
+export type DeployEvent =
+  | { type: "phase"; phase: string; message: string }
+  | { type: "log"; message: string }
+  | { type: "error"; message: string }
+  | { type: "done"; publicUrl: string; composeProject: string }
+
 /**
- * Runs a binary via spawn (no shell — args are passed as an array so no
- * command injection is possible, even if caller provides user-controlled
- * strings as args). Rejects on non-zero exit.
+ * Streams lines of stdout/stderr as they arrive. Resolves to exit code.
+ * No shell is used — args array is passed as-is, no injection risk even
+ * with user-provided slugs/names.
  */
-function runBin(
+function runBinStream(
   cmd: string,
   args: string[],
-  opts: { cwd?: string; env?: Record<string, string> } = {}
-): Promise<string> {
+  opts: { cwd?: string; env?: Record<string, string>; onLine: (line: string) => void } = { onLine: () => {} }
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    let stdout = ""
-    let stderr = ""
     const child = spawnProcess(cmd, args, {
       cwd: opts.cwd,
       env: { ...process.env, ...opts.env },
       shell: false,
     })
-    child.stdout?.on("data", (d) => { stdout += d.toString() })
-    child.stderr?.on("data", (d) => { stderr += d.toString() })
+    let stderrTail = ""
+    const emitChunk = (buf: Buffer | string) => {
+      const str = buf.toString()
+      str.split("\n").forEach((line) => {
+        if (line.length > 0) opts.onLine(line)
+      })
+    }
+    child.stdout?.on("data", emitChunk)
+    child.stderr?.on("data", (b: Buffer) => {
+      stderrTail += b.toString()
+      emitChunk(b)
+    })
     child.on("error", reject)
     child.on("close", (code) => {
-      if (code === 0) resolve(stdout)
-      else reject(new Error(`${cmd} ${args.join(" ")} failed (exit ${code}): ${stderr || stdout}`))
+      if (code === 0) resolve()
+      else reject(new Error(`${cmd} exit ${code}: ${stderrTail.slice(-400)}`))
     })
   })
 }
@@ -66,12 +80,6 @@ function buildEnvFile(client: Client, config: ClientConfig): string {
   ].join("\n")
 }
 
-/**
- * Override compose file — unbinds every host port from the e-snack base
- * compose so multiple client stacks coexist without colliding. All services
- * stay reachable on the per-project Docker network; ngrok joins that network
- * and tunnels to the frontend via its container hostname.
- */
 function buildOverrideCompose(): string {
   return [
     "services:",
@@ -98,10 +106,11 @@ async function exists(p: string): Promise<boolean> {
   }
 }
 
-/** Starts the e-snack stack for a client. Returns the public ngrok URL. */
-export async function deployClientInstance(
-  clientId: string
-): Promise<{ publicUrl: string; composeProject: string }> {
+/**
+ * Deploys a client instance, yielding progress events as it runs.
+ * Consumers (e.g. SSE route) enqueue each event to the response stream.
+ */
+export async function* deployClientInstanceStream(clientId: string): AsyncGenerator<DeployEvent> {
   const [client] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1)
   if (!client) throw new Error("Client not found")
   const [config] = await db
@@ -119,27 +128,43 @@ export async function deployClientInstance(
   const clientDir = path.join(CLIENTS_DIR, slug)
   const network = `${project}_default`
 
-  // 1. Ensure dir + clone or fetch
+  const logs: DeployEvent[] = []
+  const pushLog = (message: string) => logs.push({ type: "log", message })
+
+  yield { type: "phase", phase: "clone", message: `Préparation de ${clientDir}` }
   await mkdir(clientDir, { recursive: true })
+
   if (await exists(path.join(clientDir, ".git"))) {
-    await runBin("git", ["-C", clientDir, "fetch", "origin"])
-    await runBin("git", ["-C", clientDir, "reset", "--hard", "origin/main"])
+    yield { type: "phase", phase: "clone", message: "Repo déjà cloné — mise à jour (git fetch + reset)" }
+    await runBinStream("git", ["-C", clientDir, "fetch", "origin"], { onLine: pushLog })
+    while (logs.length) yield logs.shift()!
+    await runBinStream("git", ["-C", clientDir, "reset", "--hard", "origin/main"], { onLine: pushLog })
+    while (logs.length) yield logs.shift()!
   } else {
-    await runBin("git", ["clone", "--depth", "1", ESNACK_REPO, clientDir])
+    yield { type: "phase", phase: "clone", message: `Clonage de ${ESNACK_REPO}` }
+    // Stream each progress line from git as it arrives
+    const clonePromise = runBinStream(
+      "git",
+      ["clone", "--depth", "1", "--progress", ESNACK_REPO, clientDir],
+      { onLine: pushLog }
+    )
+    yield* pollLogs(logs, clonePromise)
   }
 
-  // 2. Write .env + override compose
+  yield { type: "phase", phase: "config", message: "Génération du .env depuis client_config" }
   await writeFile(path.join(clientDir, ".env"), buildEnvFile(client, config))
   await writeFile(path.join(clientDir, "docker-compose.override.yml"), buildOverrideCompose())
+  yield { type: "log", message: ".env et docker-compose.override.yml écrits" }
 
-  // 3. Boot the stack (compose reads both compose files automatically)
-  await runBin(
+  yield { type: "phase", phase: "build", message: "Build + démarrage de la stack (docker compose up --build)" }
+  const upPromise = runBinStream(
     "docker",
     ["compose", "-p", project, "--profile", "prod", "up", "-d", "--build"],
-    { cwd: clientDir }
+    { cwd: clientDir, onLine: pushLog }
   )
+  yield* pollLogs(logs, upPromise)
 
-  // 4. Start ngrok sidecar joined to the client's compose network
+  yield { type: "phase", phase: "ngrok", message: "Lancement du tunnel ngrok" }
   const ngrokName = `${project}-ngrok`
   await stopAndRemoveIfExists(ngrokName)
 
@@ -162,11 +187,12 @@ export async function deployClientInstance(
     ExposedPorts: { "4040/tcp": {} },
   })
   await ngrok.start()
+  yield { type: "log", message: `Container ${ngrokName} démarré` }
 
-  // 5. Poll ngrok's local API (inside container) for the public URL
+  yield { type: "phase", phase: "tunnel", message: "Attente de l'URL publique ngrok" }
   const publicUrl = await waitForNgrokUrl(ngrokName)
+  yield { type: "log", message: `URL obtenue : ${publicUrl}` }
 
-  // 6. Persist state + record all managed containers
   await db
     .update(clients)
     .set({
@@ -181,22 +207,37 @@ export async function deployClientInstance(
 
   await recordProjectContainersInDb(project, client.id)
 
-  return { publicUrl, composeProject: project }
+  yield { type: "done", publicUrl, composeProject: project }
 }
 
-/** Tears down a client stack + ngrok + local working dir. */
+/** Polls the logs buffer while a promise is pending, yielding events as they appear. */
+async function* pollLogs(
+  logs: DeployEvent[],
+  promise: Promise<unknown>
+): AsyncGenerator<DeployEvent> {
+  let settled = false
+  let error: Error | null = null
+  promise.then(() => { settled = true }).catch((e) => { error = e instanceof Error ? e : new Error(String(e)); settled = true })
+  while (!settled) {
+    while (logs.length) yield logs.shift()!
+    await new Promise((r) => setTimeout(r, 50))
+  }
+  while (logs.length) yield logs.shift()!
+  if (error) throw error
+}
+
+/** Non-streaming stop for symmetry with the POST endpoint. Fast enough to be synchronous. */
 export async function stopClientInstance(clientId: string): Promise<void> {
   const [client] = await db.select().from(clients).where(eq(clients.id, clientId)).limit(1)
   if (!client) throw new Error("Client not found")
   if (!client.composeProject) return
 
   const clientDir = path.join(CLIENTS_DIR, client.slug)
-
   await stopAndRemoveIfExists(`${client.composeProject}-ngrok`)
 
   if (await exists(path.join(clientDir, "docker-compose.yml"))) {
     try {
-      await runBin(
+      await runBinStream(
         "docker",
         [
           "compose",
@@ -208,7 +249,7 @@ export async function stopClientInstance(clientId: string): Promise<void> {
           "-v",
           "--remove-orphans",
         ],
-        { cwd: clientDir }
+        { cwd: clientDir, onLine: () => {} }
       )
     } catch (err) {
       console.warn("compose down failed, continuing:", err)
@@ -231,8 +272,6 @@ export async function stopClientInstance(clientId: string): Promise<void> {
     })
     .where(eq(clients.id, clientId))
 }
-
-// ─── Helpers ────────────────────────────────────────────────────────────
 
 async function stopAndRemoveIfExists(containerName: string): Promise<void> {
   const docker = getDocker()
@@ -260,9 +299,7 @@ async function recordProjectContainersInDb(project: string, clientId: string): P
           clientId,
         })
         .onConflictDoNothing()
-    } catch {
-      // dockerName unique — ignore on redeploy
-    }
+    } catch {}
   }
 }
 
@@ -286,9 +323,7 @@ async function waitForNgrokUrl(ngrokContainerName: string, timeoutMs = 20000): P
         const url = parsed.tunnels?.[0]?.public_url
         if (url) return url
       }
-    } catch {
-      // retry
-    }
+    } catch {}
     await new Promise((r) => setTimeout(r, 1000))
   }
   throw new Error("Timed out waiting for ngrok public URL (check NGROK_AUTHTOKEN)")
