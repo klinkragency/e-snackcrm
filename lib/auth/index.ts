@@ -24,8 +24,8 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",
 
   // Locked-down access: only pre-seeded users can log in.
-  // New sign-ups through magic link are rejected.
-  emailAndPassword: { enabled: false },
+  // Email/password enabled for affiliate registration via /join/[code].
+  emailAndPassword: { enabled: true },
 
   plugins: [
     magicLink({

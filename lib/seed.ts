@@ -25,6 +25,13 @@ export async function ensureInitialAdminSeeded(): Promise<void> {
 async function runSeed(): Promise<void> {
   await seedInitialAdminIfEmpty()
   await promoteSuperAdmin()
+  // CRM badge catalog (24 badges, idempotent)
+  try {
+    const { seedBadges } = await import("@/lib/seed-crm")
+    await seedBadges()
+  } catch (err) {
+    console.error("Failed to seed CRM badges:", err)
+  }
 }
 
 async function seedInitialAdminIfEmpty(): Promise<void> {

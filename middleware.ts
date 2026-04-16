@@ -1,21 +1,36 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getSessionCookie } from "better-auth/cookies"
 
-const PROTECTED_PREFIXES = ["/clients", "/settings", "/containers"]
-const API_PROTECTED_PREFIXES = ["/api/clients", "/api/admins", "/api/containers"]
+// ── Friend's existing routes ──
+const EXISTING_PROTECTED_PAGES = ["/clients", "/settings", "/containers"]
+const EXISTING_PROTECTED_API = ["/api/clients", "/api/admins", "/api/containers"]
+
+// ── CRM affiliate routes ──
+const CRM_PROTECTED_PAGES = ["/dashboard", "/admin"]
+const CRM_PROTECTED_API = ["/api/crm"]
+
+// ── Public routes (no auth) ──
+const PUBLIC_ROUTES = ["/join", "/profil", "/auth"]
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  const isProtectedPage = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))
-  const isProtectedApi = API_PROTECTED_PREFIXES.some((p) => pathname.startsWith(p))
+  if (PUBLIC_ROUTES.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next()
+  }
+
+  const isProtectedPage =
+    EXISTING_PROTECTED_PAGES.some((p) => pathname.startsWith(p)) ||
+    CRM_PROTECTED_PAGES.some((p) => pathname.startsWith(p))
+
+  const isProtectedApi =
+    EXISTING_PROTECTED_API.some((p) => pathname.startsWith(p)) ||
+    CRM_PROTECTED_API.some((p) => pathname.startsWith(p))
 
   if (!isProtectedPage && !isProtectedApi) {
     return NextResponse.next()
   }
 
-  // Reads the Better Auth session cookie without verifying server-side —
-  // a cheap optimistic check. Server routes re-validate properly via auth.api.getSession.
   const sessionCookie = getSessionCookie(request)
   if (!sessionCookie) {
     if (isProtectedApi) {
@@ -37,5 +52,11 @@ export const config = {
     "/api/clients/:path*",
     "/api/admins/:path*",
     "/api/containers/:path*",
+    "/dashboard/:path*",
+    "/admin/:path*",
+    "/api/crm/:path*",
+    "/join/:path*",
+    "/profil/:path*",
+    "/auth/:path*",
   ],
 }
